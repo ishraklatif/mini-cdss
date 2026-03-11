@@ -1,44 +1,57 @@
-import { useState, useEffect, useCallback } from 'react';
-import { patientAPI } from '../services/fhirClient';
+import { useState, useEffect } from "react";
+import { patientAPI } from "../services/fhirClient";
+import { MOCK_PATIENTS } from "../utils/mockData";
 
-export const usePatients = () => {
+export function usePatients() {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading]   = useState(true);
-
-  const fetchPatients = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await patientAPI.getAll();
-      setPatients(res.data);
-    } catch (err) {
-      console.warn('API unavailable — using mock data');
-      const { MOCK_PATIENTS } = await import('../utils/mockData');
-      setPatients(MOCK_PATIENTS);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchPatients(); }, [fetchPatients]);
-  return { patients, loading, refetch: fetchPatients };
-};
-
-export const usePatient = (patientId) => {
-  const [patient, setPatient] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState(null);
+  const [source, setSource]     = useState("api");
 
   useEffect(() => {
-    if (!patientId) return;
-    setLoading(true);
-    patientAPI.getById(patientId)
-      .then(res => setPatient(res.data))
-      .catch(() => {
-        import('../utils/mockData').then(({ MOCK_PATIENTS }) => {
-          setPatient(MOCK_PATIENTS.find(p => p.id === patientId) || null);
-        });
-      })
-      .finally(() => setLoading(false));
+    const fetchPatients = async () => {
+      try {
+        const response = await patientAPI.getAll();
+        setPatients(response.data);
+        setSource("api");
+      } catch (err) {
+        console.warn("Backend unavailable, falling back to mock data:", err.message);
+        setPatients(MOCK_PATIENTS);
+        setSource("mock");
+        setError(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPatients();
+  }, []);
+
+  return { patients, loading, error, source };
+}
+
+export function usePatient(patientId) {
+  const [patient, setPatient] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+
+  useEffect(() => {
+    if (!patientId) { setLoading(false); return; }
+
+    const fetchPatient = async () => {
+      try {
+        const response = await patientAPI.getById(patientId);
+        setPatient(response.data);
+      } catch (err) {
+        console.warn("Falling back to mock for patient:", patientId);
+        const mock = MOCK_PATIENTS.find(p => p.id === patientId) || null;
+        setPatient(mock);
+        setError(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPatient();
   }, [patientId]);
 
-  return { patient, loading };
-};
+  return { patient, loading, error };
+}
